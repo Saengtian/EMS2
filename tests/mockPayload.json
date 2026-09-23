@@ -1,0 +1,19 @@
+{
+  "builds": [
+    { "product": "X4151", "build_phase": "P1", "process": "Rotor assembly", "plan_start": "2026-07-01", "plan_end": "2026-07-10", "actual_start": "2026-07-01", "actual_end": "2026-07-09", "plan_qty": 500, "actual_qty": 480, "status": "Done", "owner": "NPI" },
+    { "product": "X4151", "build_phase": "EVT", "process": "Fan assembly", "plan_start": "2026-08-01", "plan_end": "2026-08-15", "actual_start": "2026-08-02", "actual_end": null, "plan_qty": 1000, "actual_qty": 450, "status": "WIP", "owner": "NPI" },
+    { "product": "X4152", "build_phase": "DVT", "process": "Fan test accessory", "plan_start": "2026-09-01", "plan_end": "2026-09-12", "actual_start": null, "actual_end": null, "plan_qty": 800, "actual_qty": 0, "status": "Planned", "owner": "NPI" }
+  ],
+  "lots": [
+    { "date": "2026-08-03", "product": "X4151", "build_phase": "EVT", "lot_no": "L001", "process": "Fan assembly", "input_qty": 1000, "first_pass_qty": 950, "final_pass_qty": 980, "rework_qty": 30, "scrap_qty": 20, "run_hours": 10, "planned_hours": 10, "downtime_min": 60, "ideal_cycle_sec": 30 },
+    { "date": "2026-08-04", "product": "X4151", "build_phase": "EVT", "lot_no": "L002", "process": "Fan assembly", "input_qty": 500, "first_pass_qty": 400, "final_pass_qty": 460, "rework_qty": 60, "scrap_qty": 40, "run_hours": 5, "planned_hours": 5, "downtime_min": 30, "ideal_cycle_sec": 30 },
+    { "date": "2026-08-05", "product": "X4152", "build_phase": "DVT", "lot_no": "L003", "process": "Rotor assembly", "input_qty": null, "first_pass_qty": null, "final_pass_qty": null, "rework_qty": null, "scrap_qty": null, "run_hours": null, "planned_hours": null, "downtime_min": null, "ideal_cycle_sec": null }
+  ],
+  "shipments": [
+    { "product": "X4151", "build_phase": "EVT", "lot_no": "L001", "plan_qty": 500, "actual_qty": 450, "plan_date": "2026-08-10", "actual_date": "2026-08-10" }
+  ],
+  "facas": [
+    { "faca_id": "F-001", "product": "X4151", "build_phase": "EVT", "lot_no": "L001", "process": "Fan assembly", "title": "Vibration high", "status": "closed", "owner": "QE", "opened_date": "2026-08-04", "due_date": "2026-08-11", "closed_date": "2026-08-09" },
+    { "faca_id": "F-002", "product": "X4151", "build_phase": "EVT", "lot_no": "L002", "process": "Fan assembly", "title": "Noise fail", "status": "open", "owner": "PE", "opened_date": "2026-08-05", "due_date": "2026-08-12", "closed_date": null }
+  ]
+}
