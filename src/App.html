@@ -3,6 +3,7 @@ window.NPI = { raw: null, filters: { products: [], phases: [], processes: [], lo
 function fmtPct(v) { return v === null || v === undefined ? "—" : (v * 100).toFixed(1) + "%"; }
 function fmtNum(v, d) { return v === null || v === undefined ? "—" : Number(v).toFixed(d === undefined ? 1 : d); }
 function safeDiv(n, d) { return (typeof n !== "number" || typeof d !== "number" || !isFinite(n) || !isFinite(d) || d === 0) ? null : n / d; }
+function esc(s){ return String(s === null || s === undefined ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
 function passFilters(lot) {
   const f = window.NPI.filters;
   if (f.products.length && !f.products.includes(lot.product)) return false;
@@ -13,12 +14,57 @@ function passFilters(lot) {
   if (f.to && String(lot.date) > f.to) return false;
   return true;
 }
+function passScope(r) {
+  const f = window.NPI.filters;
+  if (f.products.length && !f.products.includes(r.product)) return false;
+  if (f.phases.length && !f.phases.includes(r.build_phase)) return false;
+  if (f.processes.length && r.process && !f.processes.includes(r.process)) return false;
+  return true;
+}
+function populateFilters() {
+  const d = window.NPI.raw;
+  if (!d) return;
+  const uniq = (arr) => Array.from(new Set(arr.filter((v) => v !== null && v !== undefined && v !== ""))).sort();
+  const products = uniq((d.builds || []).map((b) => b.product).concat((d.lots || []).map((l) => l.product)));
+  const processes = uniq((d.builds || []).map((b) => b.process).concat((d.lots || []).map((l) => l.process)));
+  const present = new Set((d.builds || []).map((b) => b.build_phase).concat((d.lots || []).map((l) => l.build_phase)));
+  const phases = ["P1", "P2", "EVT", "DVT", "PVT"].filter((p) => present.has(p));
+  const fill = (id, vals) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const existing = new Set(Array.from(el.options).map((o) => o.value));
+    vals.forEach((v) => { if (!existing.has(v)) { const o = document.createElement("option"); o.value = v; o.textContent = v; el.appendChild(o); } });
+  };
+  fill("fltProduct", products);
+  fill("fltPhase", phases);
+  fill("fltProcess", processes);
+}
+function wireFilters() {
+  if (wireFilters.done) return;
+  wireFilters.done = true;
+  const sel = (id, key) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.onchange = () => { window.NPI.filters[key] = Array.from(el.selectedOptions).map((o) => o.value); onData(); };
+  };
+  sel("fltProduct", "products");
+  sel("fltPhase", "phases");
+  sel("fltProcess", "processes");
+  const inp = (id, key) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.oninput = () => { window.NPI.filters[key] = el.value; onData(); };
+  };
+  inp("fltLot", "lot");
+  inp("fltFrom", "from");
+  inp("fltTo", "to");
+}
 function aggKPIs(lots, shipments, facas) {
   let fi = 0, fiD = 0, fn = 0, fnD = 0, hrs = 0, aA = 0, aP = 0, cC = 0, cT = 0;
   lots.forEach((l) => {
     if (typeof l.input_qty === "number" && typeof l.first_pass_qty === "number") { fi += l.first_pass_qty; fiD += l.input_qty; }
     if (typeof l.input_qty === "number" && typeof l.final_pass_qty === "number") { fn += l.final_pass_qty; fnD += l.input_qty; }
-    if (typeof l.final_pass_qty === "number" && typeof l.run_hours === "number") { fn += 0; hrs += l.run_hours; }
+    if (typeof l.final_pass_qty === "number" && typeof l.run_hours === "number") { hrs += l.run_hours; }
   });
   const passSum = lots.reduce((s, l) => s + (typeof l.final_pass_qty === "number" ? l.final_pass_qty : 0), 0);
   shipments.forEach((s) => { if (typeof s.actual_qty === "number") aA += s.actual_qty; if (typeof s.plan_qty === "number") aP += s.plan_qty; });
@@ -38,12 +84,17 @@ function showBanner(msg) { const b = document.getElementById("bannerEl"); b.text
 function loadDashboard() {
   if (window.__MOCK__) { window.NPI.raw = window.__MOCK__; onData(); return; }
   google.script.run.withSuccessHandler((d) => { window.NPI.raw = d; onData(); })
-    .withFailureHandler((e) => showBanner("Load failed at " + new Date().toISOString() + ": " + (e && e.message)));
+    .withFailureHandler((e) => showBanner("Load failed at " + new Date().toISOString() + ": " + (e && e.message)))
+    .getDashboardData();
 }
 function onData() {
   const d = window.NPI.raw;
+  populateFilters(); wireFilters();
   if (d.meta && d.meta.missingSheets && d.meta.missingSheets.length) showBanner("Missing sheets: " + d.meta.missingSheets.join(", "));
-  renderKPIs(aggKPIs(d.lots.filter(passFilters), d.shipments, d.facas)); renderGantt(); if (window.echarts && window.echarts.init) renderCharts(); renderTables(); renderFaca(); renderQuality();
+  const fl = d.lots.filter(passFilters);
+  const fs = (d.shipments || []).filter(passScope);
+  const ff = (d.facas || []).filter(passScope);
+  renderKPIs(aggKPIs(fl, fs, ff)); renderGantt(); if (window.echarts && window.echarts.init) renderCharts(); renderTables(); renderFaca(); renderQuality();
 }
 function renderGantt() {
   const el = document.getElementById("ganttEl");
@@ -62,7 +113,7 @@ function renderGantt() {
   const today = ((Date.now() - min) / span * 100);
   el.innerHTML = builds.map((b, i) => {
     const prog = (typeof b.actual_qty === "number" && typeof b.plan_qty === "number" && b.plan_qty > 0) ? Math.round(b.actual_qty / b.plan_qty * 100) : null;
-    return '<div class="gantt-row" data-i="' + i + '"><div class="text-xs"><b>' + b.product + " " + b.build_phase + "</b><br><span class='empty'>" + (b.process || "") + '</span></div><div class="gantt-track">'
+    return '<div class="gantt-row" data-i="' + i + '"><div class="text-xs"><b>' + esc(b.product) + " " + esc(b.build_phase) + "</b><br><span class='empty'>" + esc(b.process || "") + '</span></div><div class="gantt-track">'
       + '<div class="gantt-plan" style="left:' + pct(b.plan_start) + "%;width:" + wdt(b.plan_start, b.plan_end) + '%"></div>'
       + '<div class="gantt-actual" style="left:' + pct(b.actual_start) + "%;width:" + wdt(b.actual_start, b.actual_end || b.plan_end) + '%"></div>'
       + ((today >= 0 && today <= 100) ? '<div class="gantt-today" style="left:' + today + '%"></div>' : "")
@@ -73,8 +124,8 @@ function renderGantt() {
 function openDrawer(b) {
   const lots = window.NPI.raw.lots.filter((l) => l.product === b.product && l.build_phase === b.build_phase);
   const facas = window.NPI.raw.facas.filter((f) => f.product === b.product && f.build_phase === b.build_phase);
-  document.getElementById("drawerEl").innerHTML = "<h3 class='font-bold mb-2'>" + b.product + " " + b.build_phase + "</h3>"
-    + "<p class='text-xs empty mb-2'>" + (b.process || "") + " · plan " + (b.plan_start || "—") + " → " + (b.plan_end || "—") + " · actual " + (b.actual_start || "—") + " → " + (b.actual_end || "—") + "</p>"
+  document.getElementById("drawerEl").innerHTML = "<h3 class='font-bold mb-2'>" + esc(b.product) + " " + esc(b.build_phase) + "</h3>"
+    + "<p class='text-xs empty mb-2'>" + esc(b.process || "") + " · plan " + esc(b.plan_start || "—") + " → " + esc(b.plan_end || "—") + " · actual " + esc(b.actual_start || "—") + " → " + esc(b.actual_end || "—") + "</p>"
     + "<p class='text-sm mb-2'>Lots: " + lots.length + " · FACA open: " + facas.filter((f) => String(f.status).toLowerCase() !== "closed").length + "/" + facas.length + "</p>"
     + '<button class="card px-3 py-1 text-sm" onclick="document.getElementById(\'drawerEl\').classList.remove(\'open\')">Close</button>';
   document.getElementById("drawerEl").classList.add("open");
@@ -85,17 +136,19 @@ function renderCharts() {
     + '<div class="card p-3"><h3 class="text-sm font-semibold mb-1">UPH by lot</h3><div id="ch2" style="height:260px"></div></div>'
     + '<div class="card p-3"><h3 class="text-sm font-semibold mb-1">Shipment plan vs actual</h3><div id="ch3" style="height:260px"></div></div>'
     + '<div class="card p-3"><h3 class="text-sm font-semibold mb-1">FACA open vs closed</h3><div id="ch4" style="height:260px"></div></div>';
-  const lots = window.NPI.raw.lots.filter(passFilters).slice().sort((a, b) => String(a.date) < String(b.date) ? -1 : 1);
+  const lots = window.NPI.raw.lots.filter(passFilters).slice().sort((a, b) => new Date(a.date) - new Date(b.date));
   const labels = lots.map((l) => l.lot_no);
-  echarts.init(document.getElementById("ch1")).setOption({ xAxis: { type: "category", data: labels }, yAxis: { type: "value", min: 0, max: 1 }, series: [{ name: "FPY", type: "line", data: lots.map((l) => l.fpy) }, { name: "FY", type: "line", data: lots.map((l) => l.fy) }], tooltip: { trigger: "axis" } });
-  echarts.init(document.getElementById("ch2")).setOption({ xAxis: { type: "category", data: labels }, yAxis: { type: "value" }, series: [{ name: "UPH", type: "bar", data: lots.map((l) => l.uph) }], tooltip: { trigger: "axis" } });
-  const sm = window.NPI.raw.shipments;
+  const mkChart = (id) => { const el = document.getElementById(id); const prev = window.echarts.getInstanceByDom(el); if (prev) prev.dispose(); return window.echarts.init(el); };
+  mkChart("ch1").setOption({ xAxis: { type: "category", data: labels }, yAxis: { type: "value", min: 0, max: 1 }, series: [{ name: "FPY", type: "line", connectNulls: false, data: lots.map((l) => l.fpy) }, { name: "FY", type: "line", connectNulls: false, data: lots.map((l) => l.fy) }], tooltip: { trigger: "axis" } });
+  mkChart("ch2").setOption({ xAxis: { type: "category", data: labels }, yAxis: { type: "value" }, series: [{ name: "UPH", type: "bar", data: lots.map((l) => l.uph) }], tooltip: { trigger: "axis" } });
+  const sm = (window.NPI.raw.shipments || []).filter(passScope);
   const pSum = sm.reduce((s, r) => s + (typeof r.plan_qty === "number" ? r.plan_qty : 0), 0);
   const aSum = sm.reduce((s, r) => s + (typeof r.actual_qty === "number" ? r.actual_qty : 0), 0);
-  echarts.init(document.getElementById("ch3")).setOption({ xAxis: { type: "category", data: ["Qty"] }, yAxis: { type: "value" }, series: [{ name: "Plan", type: "bar", data: [pSum] }, { name: "Actual", type: "bar", data: [aSum] }], tooltip: { trigger: "axis" } });
-  const closed = window.NPI.raw.facas.filter((f) => String(f.status).toLowerCase() === "closed").length;
-  const open = window.NPI.raw.facas.length - closed;
-  echarts.init(document.getElementById("ch4")).setOption({ series: [{ type: "pie", radius: "60%", data: [{ value: closed, name: "Closed" }, { value: open, name: "Open" }] }], tooltip: { trigger: "item" } });
+  mkChart("ch3").setOption({ xAxis: { type: "category", data: ["Qty"] }, yAxis: { type: "value" }, series: [{ name: "Plan", type: "bar", data: [pSum] }, { name: "Actual", type: "bar", data: [aSum] }], tooltip: { trigger: "axis" } });
+  const frows = (window.NPI.raw.facas || []).filter(passScope);
+  const closed = frows.filter((f) => String(f.status).toLowerCase() === "closed").length;
+  const open = frows.length - closed;
+  mkChart("ch4").setOption({ series: [{ type: "pie", radius: "60%", data: [{ value: closed, name: "Closed" }, { value: open, name: "Open" }] }], tooltip: { trigger: "item" } });
 }
 function csv(name, rows) {
   const q = (v) => '"' + String(v === null || v === undefined ? "" : v).replace(/"/g, '""') + '"';
@@ -103,23 +156,24 @@ function csv(name, rows) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
   a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 function renderTables() {
   const lots = window.NPI.raw.lots.filter(passFilters);
   const head = ["Date", "Product", "Build", "Lot", "Process", "FPY", "FY", "UPH", "OEE"];
-  const body = lots.map((l) => [l.date, l.product, l.build_phase, l.lot_no, l.process, l.fpy === null ? "—" : (l.fpy * 100).toFixed(1) + "%", l.fy === null ? "—" : (l.fy * 100).toFixed(1) + "%", l.uph === null ? "—" : Number(l.uph).toFixed(1), l.oee === null ? "—" : (l.oee * 100).toFixed(1) + "%"]);
+  const body = lots.map((l) => [l.date, l.product, l.build_phase, l.lot_no, l.process, typeof l.fpy !== "number" ? "—" : (l.fpy * 100).toFixed(1) + "%", typeof l.fy !== "number" ? "—" : (l.fy * 100).toFixed(1) + "%", typeof l.uph !== "number" ? "—" : Number(l.uph).toFixed(1), typeof l.oee !== "number" ? "—" : (l.oee * 100).toFixed(1) + "%"]);
   document.getElementById("tablesEl").innerHTML = '<button id="btnCsv" class="card px-3 py-1 text-sm mb-2">Export CSV</button><div class="overflow-auto"><table class="text-xs w-full"><thead><tr>' + head.map((h) => "<th class='text-left p-1 border-b'>" + h + "</th>").join("") + "</tr></thead><tbody>"
-    + body.map((r) => "<tr>" + r.map((c) => "<td class='p-1 border-b'>" + c + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>";
+    + body.map((r) => "<tr>" + r.map((c) => "<td class='p-1 border-b'>" + esc(c) + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>";
   document.getElementById("btnCsv").onclick = () => csv("lots.csv", [head].concat(body));
 }
 function renderFaca() {
-  const rows = window.NPI.raw.facas;
+  const rows = (window.NPI.raw.facas || []).filter(passScope);
   const open = rows.filter((f) => String(f.status).toLowerCase() !== "closed").length;
   document.getElementById("facaEl").innerHTML = "<p class='text-xs empty mb-2'>Open " + open + "/" + rows.length + "</p><div class='overflow-auto'><table class='text-xs w-full'><thead><tr><th class='text-left p-1 border-b'>ID</th><th class='text-left p-1 border-b'>Product</th><th class='text-left p-1 border-b'>Build</th><th class='text-left p-1 border-b'>Lot</th><th class='text-left p-1 border-b'>Status</th><th class='text-left p-1 border-b'>Due</th></tr></thead><tbody>"
-    + rows.map((f) => "<tr><td class='p-1 border-b'>" + f.faca_id + "</td><td class='p-1 border-b'>" + f.product + "</td><td class='p-1 border-b'>" + f.build_phase + "</td><td class='p-1 border-b'>" + (f.lot_no || "—") + "</td><td class='p-1 border-b'>" + f.status + "</td><td class='p-1 border-b'>" + (f.due_date || "—") + "</td></tr>").join("") + "</tbody></table></div>";
+    + rows.map((f) => "<tr><td class='p-1 border-b'>" + esc(f.faca_id) + "</td><td class='p-1 border-b'>" + esc(f.product) + "</td><td class='p-1 border-b'>" + esc(f.build_phase) + "</td><td class='p-1 border-b'>" + esc(f.lot_no || "—") + "</td><td class='p-1 border-b'>" + esc(f.status) + "</td><td class='p-1 border-b'>" + esc(f.due_date || "—") + "</td></tr>").join("") + "</tbody></table></div>";
 }
 function renderQuality() {
-  const bad = window.NPI.raw.lots.filter((l) => l.fpy === null || l.fy === null).length;
+  const bad = window.NPI.raw.lots.filter(passFilters).filter((l) => typeof l.fpy !== "number" || typeof l.fy !== "number").length;
   document.getElementById("qualityEl").textContent = bad ? ("Data quality: " + bad + " lot(s) incomplete") : "Data quality: OK";
 }
 document.getElementById("btnReset").onclick = () => { window.NPI.filters = { products: [], phases: [], processes: [], lot: "", from: "", to: "" }; loadDashboard(); };
