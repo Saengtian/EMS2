@@ -43,7 +43,7 @@ function loadDashboard() {
 function onData() {
   const d = window.NPI.raw;
   if (d.meta && d.meta.missingSheets && d.meta.missingSheets.length) showBanner("Missing sheets: " + d.meta.missingSheets.join(", "));
-  renderKPIs(aggKPIs(d.lots.filter(passFilters), d.shipments, d.facas)); renderGantt();
+  renderKPIs(aggKPIs(d.lots.filter(passFilters), d.shipments, d.facas)); renderGantt(); if (window.echarts && window.echarts.init) renderCharts();
 }
 function renderGantt() {
   const el = document.getElementById("ganttEl");
@@ -78,6 +78,24 @@ function openDrawer(b) {
     + "<p class='text-sm mb-2'>Lots: " + lots.length + " · FACA open: " + facas.filter((f) => String(f.status).toLowerCase() !== "closed").length + "/" + facas.length + "</p>"
     + '<button class="card px-3 py-1 text-sm" onclick="document.getElementById(\'drawerEl\').classList.remove(\'open\')">Close</button>';
   document.getElementById("drawerEl").classList.add("open");
+}
+function renderCharts() {
+  const host = document.getElementById("chartsEl");
+  host.innerHTML = '<div class="card p-3"><h3 class="text-sm font-semibold mb-1">FPY / FY by lot</h3><div id="ch1" style="height:260px"></div></div>'
+    + '<div class="card p-3"><h3 class="text-sm font-semibold mb-1">UPH by lot</h3><div id="ch2" style="height:260px"></div></div>'
+    + '<div class="card p-3"><h3 class="text-sm font-semibold mb-1">Shipment plan vs actual</h3><div id="ch3" style="height:260px"></div></div>'
+    + '<div class="card p-3"><h3 class="text-sm font-semibold mb-1">FACA open vs closed</h3><div id="ch4" style="height:260px"></div></div>';
+  const lots = window.NPI.raw.lots.filter(passFilters).slice().sort((a, b) => String(a.date) < String(b.date) ? -1 : 1);
+  const labels = lots.map((l) => l.lot_no);
+  echarts.init(document.getElementById("ch1")).setOption({ xAxis: { type: "category", data: labels }, yAxis: { type: "value", min: 0, max: 1 }, series: [{ name: "FPY", type: "line", data: lots.map((l) => l.fpy) }, { name: "FY", type: "line", data: lots.map((l) => l.fy) }], tooltip: { trigger: "axis" } });
+  echarts.init(document.getElementById("ch2")).setOption({ xAxis: { type: "category", data: labels }, yAxis: { type: "value" }, series: [{ name: "UPH", type: "bar", data: lots.map((l) => l.uph) }], tooltip: { trigger: "axis" } });
+  const sm = window.NPI.raw.shipments;
+  const pSum = sm.reduce((s, r) => s + (typeof r.plan_qty === "number" ? r.plan_qty : 0), 0);
+  const aSum = sm.reduce((s, r) => s + (typeof r.actual_qty === "number" ? r.actual_qty : 0), 0);
+  echarts.init(document.getElementById("ch3")).setOption({ xAxis: { type: "category", data: ["Qty"] }, yAxis: { type: "value" }, series: [{ name: "Plan", type: "bar", data: [pSum] }, { name: "Actual", type: "bar", data: [aSum] }], tooltip: { trigger: "axis" } });
+  const closed = window.NPI.raw.facas.filter((f) => String(f.status).toLowerCase() === "closed").length;
+  const open = window.NPI.raw.facas.length - closed;
+  echarts.init(document.getElementById("ch4")).setOption({ series: [{ type: "pie", radius: "60%", data: [{ value: closed, name: "Closed" }, { value: open, name: "Open" }] }], tooltip: { trigger: "item" } });
 }
 document.getElementById("btnReset").onclick = () => { window.NPI.filters = { products: [], phases: [], processes: [], lot: "", from: "", to: "" }; loadDashboard(); };
 document.getElementById("btnTheme").onclick = () => document.documentElement.classList.toggle("dark");
