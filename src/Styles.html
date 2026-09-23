@@ -1,0 +1,18 @@
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<style>
+:root { --bg:#f8fafc; --card:#ffffff; --ink:#0f172a; --mut:#64748b; --line:#e2e8f0; }
+.dark { --bg:#0b1220; --card:#111c33; --ink:#e2e8f0; --mut:#94a3b8; --line:#1e293b; }
+body { background:var(--bg); color:var(--ink); }
+.card { background:var(--card); border:1px solid var(--line); border-radius:0.75rem; }
+.gantt-row { display:grid; grid-template-columns:180px 1fr 90px; gap:8px; align-items:center; padding:6px 0; border-bottom:1px dashed var(--line); }
+.gantt-track { position:relative; height:26px; background:transparent; }
+.gantt-plan { position:absolute; height:10px; top:2px; background:#cbd5e1; border-radius:4px; }
+.gantt-actual { position:absolute; height:10px; top:14px; background:#2563eb; border-radius:4px; }
+.gantt-today { position:absolute; top:0; bottom:0; width:2px; background:#ef4444; }
+.drawer { position:fixed; right:0; top:0; bottom:0; width:min(420px,94vw); transform:translateX(105%); transition:transform .2s; z-index:50; }
+.drawer.open { transform:none; }
+.empty { color:var(--mut); font-size:.85rem; }
+.banner { display:none; }
+.banner.show { display:block; }
+@media (max-width:640px){ .gantt-row{ grid-template-columns:120px 1fr 64px; } }
+</style>

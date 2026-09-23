@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html><head><base target="_top"><meta charset="utf-8">
+<title>FDB NPI KPI Dashboard</title>
+<?!= HtmlService.createHtmlOutputFromFile('Styles').getContent(); ?>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body class="p-3 md:p-6 max-w-screen-2xl mx-auto">
+<header class="flex flex-wrap items-center gap-2 mb-3">
+<h1 class="text-xl md:text-2xl font-bold">FDB Fans — NPI KPI Dashboard</h1>
+<span id="qualityEl" class="text-xs ml-auto"></span>
+<button id="btnTheme" class="card px-3 py-1 text-sm">Theme</button>
+</header>
+<div id="bannerEl" class="banner card p-3 mb-3 text-sm"></div>
+<section class="card p-3 mb-3 flex flex-wrap gap-2 items-end">
+<label class="text-xs">Product<select id="fltProduct" multiple class="block border rounded p-1"></select></label>
+<label class="text-xs">Phase<select id="fltPhase" multiple class="block border rounded p-1"></select></label>
+<label class="text-xs">Process<select id="fltProcess" multiple class="block border rounded p-1"></select></label>
+<label class="text-xs">Lot<input id="fltLot" class="block border rounded p-1" placeholder="L001"></label>
+<label class="text-xs">From<input id="fltFrom" type="date" class="block border rounded p-1"></label>
+<label class="text-xs">To<input id="fltTo" type="date" class="block border rounded p-1"></label>
+<button id="btnReset" class="card px-3 py-1 text-sm">Reset</button>
+</section>
+<section id="kpiRow" class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2 mb-3"></section>
+<section class="card p-3 mb-3"><h2 class="font-semibold mb-2">NPI Build Plan — Gantt</h2><div id="ganttEl"></div></section>
+<section id="chartsEl" class="grid grid-cols-1 lg:grid-cols-2 gap-2 mb-3"></section>
+<section class="card p-3 mb-3"><h2 class="font-semibold mb-2">Drill-down by product / build / lot</h2><div id="tablesEl"></div></section>
+<section class="card p-3 mb-3"><h2 class="font-semibold mb-2">FACA</h2><div id="facaEl"></div></section>
+<aside id="drawerEl" class="drawer card p-4 overflow-auto"></aside>
+<?!= HtmlService.createHtmlOutputFromFile('App').getContent(); ?>
+</body></html>
