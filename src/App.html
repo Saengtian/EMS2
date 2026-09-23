@@ -1,0 +1,51 @@
+<script>
+window.NPI = { raw: null, filters: { products: [], phases: [], processes: [], lot: "", from: "", to: "" } };
+function fmtPct(v) { return v === null || v === undefined ? "—" : (v * 100).toFixed(1) + "%"; }
+function fmtNum(v, d) { return v === null || v === undefined ? "—" : Number(v).toFixed(d === undefined ? 1 : d); }
+function safeDiv(n, d) { return (typeof n !== "number" || typeof d !== "number" || !isFinite(n) || !isFinite(d) || d === 0) ? null : n / d; }
+function passFilters(lot) {
+  const f = window.NPI.filters;
+  if (f.products.length && !f.products.includes(lot.product)) return false;
+  if (f.phases.length && !f.phases.includes(lot.build_phase)) return false;
+  if (f.processes.length && !f.processes.includes(lot.process)) return false;
+  if (f.lot && String(lot.lot_no || "").toLowerCase().indexOf(f.lot.toLowerCase()) < 0) return false;
+  if (f.from && String(lot.date) < f.from) return false;
+  if (f.to && String(lot.date) > f.to) return false;
+  return true;
+}
+function aggKPIs(lots, shipments, facas) {
+  let fi = 0, fiD = 0, fn = 0, fnD = 0, hrs = 0, aA = 0, aP = 0, cC = 0, cT = 0;
+  lots.forEach((l) => {
+    if (typeof l.input_qty === "number" && typeof l.first_pass_qty === "number") { fi += l.first_pass_qty; fiD += l.input_qty; }
+    if (typeof l.input_qty === "number" && typeof l.final_pass_qty === "number") { fn += l.final_pass_qty; fnD += l.input_qty; }
+    if (typeof l.final_pass_qty === "number" && typeof l.run_hours === "number") { fn += 0; hrs += l.run_hours; }
+  });
+  const passSum = lots.reduce((s, l) => s + (typeof l.final_pass_qty === "number" ? l.final_pass_qty : 0), 0);
+  shipments.forEach((s) => { if (typeof s.actual_qty === "number") aA += s.actual_qty; if (typeof s.plan_qty === "number") aP += s.plan_qty; });
+  facas.forEach((f) => { cT++; if (String(f.status).toLowerCase() === "closed") cC++; });
+  const oeeVals = lots.map((l) => l.oee).filter((v) => typeof v === "number");
+  return {
+    fpy: safeDiv(fi, fiD), fy: safeDiv(fn, fnD), uph: safeDiv(passSum, hrs),
+    oee: oeeVals.length ? oeeVals.reduce((a, b) => a + b, 0) / oeeVals.length : null,
+    ship: safeDiv(aA, aP), faca: safeDiv(cC, cT), facaOpen: cT - cC, facaTotal: cT
+  };
+}
+function renderKPIs(k) {
+  const cards = [["FPY", fmtPct(k.fpy)], ["FY", fmtPct(k.fy)], ["UPH", fmtNum(k.uph)], ["OEE", fmtPct(k.oee)], ["Shipment", fmtPct(k.ship)], ["FACA closure", fmtPct(k.faca)]];
+  document.getElementById("kpiRow").innerHTML = cards.map((c) => '<div class="card p-3"><div class="text-xs" style="color:var(--mut)">' + c[0] + '</div><div class="text-2xl font-bold">' + c[1] + "</div></div>").join("");
+}
+function showBanner(msg) { const b = document.getElementById("bannerEl"); b.textContent = msg; b.classList.add("show"); }
+function loadDashboard() {
+  if (window.__MOCK__) { window.NPI.raw = window.__MOCK__; onData(); return; }
+  google.script.run.withSuccessHandler((d) => { window.NPI.raw = d; onData(); })
+    .withFailureHandler((e) => showBanner("Load failed at " + new Date().toISOString() + ": " + (e && e.message)));
+}
+function onData() {
+  const d = window.NPI.raw;
+  if (d.meta && d.meta.missingSheets && d.meta.missingSheets.length) showBanner("Missing sheets: " + d.meta.missingSheets.join(", "));
+  renderKPIs(aggKPIs(d.lots.filter(passFilters), d.shipments, d.facas));
+}
+document.getElementById("btnReset").onclick = () => { window.NPI.filters = { products: [], phases: [], processes: [], lot: "", from: "", to: "" }; loadDashboard(); };
+document.getElementById("btnTheme").onclick = () => document.documentElement.classList.toggle("dark");
+window.addEventListener("DOMContentLoaded", loadDashboard);
+</script>
