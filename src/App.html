@@ -43,7 +43,7 @@ function loadDashboard() {
 function onData() {
   const d = window.NPI.raw;
   if (d.meta && d.meta.missingSheets && d.meta.missingSheets.length) showBanner("Missing sheets: " + d.meta.missingSheets.join(", "));
-  renderKPIs(aggKPIs(d.lots.filter(passFilters), d.shipments, d.facas)); renderGantt(); if (window.echarts && window.echarts.init) renderCharts();
+  renderKPIs(aggKPIs(d.lots.filter(passFilters), d.shipments, d.facas)); renderGantt(); if (window.echarts && window.echarts.init) renderCharts(); renderTables(); renderFaca(); renderQuality();
 }
 function renderGantt() {
   const el = document.getElementById("ganttEl");
@@ -96,6 +96,31 @@ function renderCharts() {
   const closed = window.NPI.raw.facas.filter((f) => String(f.status).toLowerCase() === "closed").length;
   const open = window.NPI.raw.facas.length - closed;
   echarts.init(document.getElementById("ch4")).setOption({ series: [{ type: "pie", radius: "60%", data: [{ value: closed, name: "Closed" }, { value: open, name: "Open" }] }], tooltip: { trigger: "item" } });
+}
+function csv(name, rows) {
+  const q = (v) => '"' + String(v === null || v === undefined ? "" : v).replace(/"/g, '""') + '"';
+  const text = rows.map((r) => r.map(q).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" }));
+  a.download = name; a.click();
+}
+function renderTables() {
+  const lots = window.NPI.raw.lots.filter(passFilters);
+  const head = ["Date", "Product", "Build", "Lot", "Process", "FPY", "FY", "UPH", "OEE"];
+  const body = lots.map((l) => [l.date, l.product, l.build_phase, l.lot_no, l.process, l.fpy === null ? "—" : (l.fpy * 100).toFixed(1) + "%", l.fy === null ? "—" : (l.fy * 100).toFixed(1) + "%", l.uph === null ? "—" : Number(l.uph).toFixed(1), l.oee === null ? "—" : (l.oee * 100).toFixed(1) + "%"]);
+  document.getElementById("tablesEl").innerHTML = '<button id="btnCsv" class="card px-3 py-1 text-sm mb-2">Export CSV</button><div class="overflow-auto"><table class="text-xs w-full"><thead><tr>' + head.map((h) => "<th class='text-left p-1 border-b'>" + h + "</th>").join("") + "</tr></thead><tbody>"
+    + body.map((r) => "<tr>" + r.map((c) => "<td class='p-1 border-b'>" + c + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>";
+  document.getElementById("btnCsv").onclick = () => csv("lots.csv", [head].concat(body));
+}
+function renderFaca() {
+  const rows = window.NPI.raw.facas;
+  const open = rows.filter((f) => String(f.status).toLowerCase() !== "closed").length;
+  document.getElementById("facaEl").innerHTML = "<p class='text-xs empty mb-2'>Open " + open + "/" + rows.length + "</p><div class='overflow-auto'><table class='text-xs w-full'><thead><tr><th class='text-left p-1 border-b'>ID</th><th class='text-left p-1 border-b'>Product</th><th class='text-left p-1 border-b'>Build</th><th class='text-left p-1 border-b'>Lot</th><th class='text-left p-1 border-b'>Status</th><th class='text-left p-1 border-b'>Due</th></tr></thead><tbody>"
+    + rows.map((f) => "<tr><td class='p-1 border-b'>" + f.faca_id + "</td><td class='p-1 border-b'>" + f.product + "</td><td class='p-1 border-b'>" + f.build_phase + "</td><td class='p-1 border-b'>" + (f.lot_no || "—") + "</td><td class='p-1 border-b'>" + f.status + "</td><td class='p-1 border-b'>" + (f.due_date || "—") + "</td></tr>").join("") + "</tbody></table></div>";
+}
+function renderQuality() {
+  const bad = window.NPI.raw.lots.filter((l) => l.fpy === null || l.fy === null).length;
+  document.getElementById("qualityEl").textContent = bad ? ("Data quality: " + bad + " lot(s) incomplete") : "Data quality: OK";
 }
 document.getElementById("btnReset").onclick = () => { window.NPI.filters = { products: [], phases: [], processes: [], lot: "", from: "", to: "" }; loadDashboard(); };
 document.getElementById("btnTheme").onclick = () => document.documentElement.classList.toggle("dark");
