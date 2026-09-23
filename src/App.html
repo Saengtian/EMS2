@@ -43,7 +43,41 @@ function loadDashboard() {
 function onData() {
   const d = window.NPI.raw;
   if (d.meta && d.meta.missingSheets && d.meta.missingSheets.length) showBanner("Missing sheets: " + d.meta.missingSheets.join(", "));
-  renderKPIs(aggKPIs(d.lots.filter(passFilters), d.shipments, d.facas));
+  renderKPIs(aggKPIs(d.lots.filter(passFilters), d.shipments, d.facas)); renderGantt();
+}
+function renderGantt() {
+  const el = document.getElementById("ganttEl");
+  const builds = window.NPI.raw.builds.filter((b) => {
+    const f = window.NPI.filters;
+    if (f.products.length && !f.products.includes(b.product)) return false;
+    if (f.phases.length && !f.phases.includes(b.build_phase)) return false;
+    if (f.processes.length && !f.processes.includes(b.process)) return false;
+    return true;
+  });
+  if (!builds.length) { el.innerHTML = '<p class="empty">No builds for current filters.</p>'; return; }
+  const dates = builds.flatMap((b) => [b.plan_start, b.plan_end, b.actual_start, b.actual_end]).filter(Boolean).map((d) => new Date(d).getTime());
+  const min = Math.min.apply(null, dates), max = Math.max.apply(null, dates), span = Math.max(max - min, 1);
+  const pct = (d) => d ? ((new Date(d).getTime() - min) / span * 100) : 0;
+  const wdt = (a, b) => (a && b) ? Math.max((new Date(b).getTime() - new Date(a).getTime()) / span * 100, 2) : 0;
+  const today = ((Date.now() - min) / span * 100);
+  el.innerHTML = builds.map((b, i) => {
+    const prog = (typeof b.actual_qty === "number" && typeof b.plan_qty === "number" && b.plan_qty > 0) ? Math.round(b.actual_qty / b.plan_qty * 100) : null;
+    return '<div class="gantt-row" data-i="' + i + '"><div class="text-xs"><b>' + b.product + " " + b.build_phase + "</b><br><span class='empty'>" + (b.process || "") + '</span></div><div class="gantt-track">'
+      + '<div class="gantt-plan" style="left:' + pct(b.plan_start) + "%;width:" + wdt(b.plan_start, b.plan_end) + '%"></div>'
+      + '<div class="gantt-actual" style="left:' + pct(b.actual_start) + "%;width:" + wdt(b.actual_start, b.actual_end || b.plan_end) + '%"></div>'
+      + ((today >= 0 && today <= 100) ? '<div class="gantt-today" style="left:' + today + '%"></div>' : "")
+      + '</div><div class="text-xs text-right">' + (prog === null ? "—" : prog + "%") + "</div></div>";
+  }).join("");
+  el.querySelectorAll(".gantt-row").forEach((row) => row.onclick = () => openDrawer(builds[Number(row.dataset.i)]));
+}
+function openDrawer(b) {
+  const lots = window.NPI.raw.lots.filter((l) => l.product === b.product && l.build_phase === b.build_phase);
+  const facas = window.NPI.raw.facas.filter((f) => f.product === b.product && f.build_phase === b.build_phase);
+  document.getElementById("drawerEl").innerHTML = "<h3 class='font-bold mb-2'>" + b.product + " " + b.build_phase + "</h3>"
+    + "<p class='text-xs empty mb-2'>" + (b.process || "") + " · plan " + (b.plan_start || "—") + " → " + (b.plan_end || "—") + " · actual " + (b.actual_start || "—") + " → " + (b.actual_end || "—") + "</p>"
+    + "<p class='text-sm mb-2'>Lots: " + lots.length + " · FACA open: " + facas.filter((f) => String(f.status).toLowerCase() !== "closed").length + "/" + facas.length + "</p>"
+    + '<button class="card px-3 py-1 text-sm" onclick="document.getElementById(\'drawerEl\').classList.remove(\'open\')">Close</button>';
+  document.getElementById("drawerEl").classList.add("open");
 }
 document.getElementById("btnReset").onclick = () => { window.NPI.filters = { products: [], phases: [], processes: [], lot: "", from: "", to: "" }; loadDashboard(); };
 document.getElementById("btnTheme").onclick = () => document.documentElement.classList.toggle("dark");
